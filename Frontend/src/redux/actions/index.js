@@ -21,8 +21,8 @@ export const updatePostTestInfo = (timeTaken, score, questionData) => ({
     payload: { timeTaken, score, questionData }
 });
 
-export const updateLectureInfo = (audioTimeTaken, textTimeTaken, timeTaken, audioData, audioEventsSummary, pageAudio1, pageAudio2, pageAudio3, pageAudio4, pageAudio5, pageText1, pageText2, pageText3, pageText4, pageText5) => ({
+export const updateLectureInfo = (audioTimeTaken, textTimeTaken, timeTaken, audioData, audioEventsSummary, pageAudio1, pageAudio2, pageAudio3, pageAudio4, pageAudio5, pageText1, pageText2, pageText3, pageText4, pageText5, modeChangeEvents) => ({
     type: UPDATE_LECTURE_INFO,
-    payload: { audioTimeTaken, textTimeTaken, timeTaken, audioData, audioEventsSummary, pageAudio1,  pageAudio2, pageAudio3, pageAudio4, pageAudio5, pageText1, pageText2, pageText3, pageText4, pageText5}
+    payload: { audioTimeTaken, textTimeTaken, timeTaken, audioData, audioEventsSummary, pageAudio1, pageAudio2, pageAudio3, pageAudio4, pageAudio5, pageText1, pageText2, pageText3, pageText4, pageText5, modeChangeEvents}
 });
 

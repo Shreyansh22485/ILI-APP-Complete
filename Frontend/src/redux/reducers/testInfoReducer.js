@@ -17,6 +17,7 @@ const initialState = {
         timeTaken: null,
         audioData: null,
         audioEvents: null,
+        modeChangeEvents: null,
         pageAudio1: null,  
         pageAudio2: null, 
         pageAudio3: null, 
@@ -35,17 +36,42 @@ const testInfoReducer = (state = initialState, action) => {
         case UPDATE_PRETEST_INFO:
             return {
                 ...state,
-                preTest: { ...state.preTest, ...action.payload }
+                preTest: {
+                    timeTaken: action.payload.timeTaken,
+                    score: action.payload.score,
+                    questionData: action.payload.questionData
+                }
             };
         case UPDATE_POSTTEST_INFO:
             return {
                 ...state,
-                postTest: { ...state.postTest, ...action.payload }
+                postTest: {
+                    timeTaken: action.payload.timeTaken,
+                    score: action.payload.score,
+                    questionData: action.payload.questionData
+                }
             };
         case UPDATE_LECTURE_INFO:
             return {
                 ...state,
-                lecture: { ...state.lecture, ...action.payload }
+                lecture: {
+                    audioTimeTaken: action.payload.audioTimeTaken,
+                    textTimeTaken: action.payload.textTimeTaken,
+                    timeTaken: action.payload.timeTaken,
+                    audioData: action.payload.audioData,
+                    audioEvents: action.payload.audioEventsSummary,
+                    modeChangeEvents: action.payload.modeChangeEvents,
+                    pageAudio1: action.payload.pageAudio1,
+                    pageAudio2: action.payload.pageAudio2,
+                    pageAudio3: action.payload.pageAudio3,
+                    pageAudio4: action.payload.pageAudio4,
+                    pageAudio5: action.payload.pageAudio5,
+                    pageText1: action.payload.pageText1,
+                    pageText2: action.payload.pageText2,
+                    pageText3: action.payload.pageText3,
+                    pageText4: action.payload.pageText4,
+                    pageText5: action.payload.pageText5,
+                }
             };
         default:
             return state;

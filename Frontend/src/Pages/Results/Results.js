@@ -265,15 +265,12 @@ export default function Results() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white shadow-lg rounded-lg p-6">
-              <h2 className="text-2xl font-semibold mb-4">Timings</h2>
+              <h2 className="text-2xl font-semibold mb-4">Time Metrics</h2>
               <ul className="list-disc list-inside">
                 <li className="text-lg mb-2">
                   PreTest Time: {formatTime(preTestInfo?.timeTaken)}
-                </li>
-                <li className="text-lg mb-2">
-                  Lecture Time: {formatTime(lectureInfo?.timeTaken)}
                 </li>
                 <li className="text-lg mb-2">
                   Lecture Audio Time: {formatTime(lectureInfo?.audioTimeTaken)}
@@ -355,6 +352,21 @@ export default function Results() {
                   timelineDuration={commonTimelineDuration}
                 />
               ))}
+            </div>
+            
+            <div className="bg-white shadow-lg rounded-lg p-6">
+              <h2 className="text-2xl font-semibold mb-4">Mode Changes</h2>
+              {lectureInfo.modeChangeEvents && lectureInfo.modeChangeEvents.length > 0 ? (
+                <ul className="list-disc list-inside">
+                  {lectureInfo.modeChangeEvents.map((event, index) => (
+                    <li key={index} className="text-lg mb-2">
+                      {event}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-lg">No mode changes recorded</p>
+              )}
             </div>
           </div>
 

@@ -40,7 +40,8 @@ export default function Lecture({ onCompletion }) {
   const nextButtonRef = useRef(null);
   const replayButtonRef = useRef(null)
   const [currentAudioFile, setCurrentAudioFile] = useState(1);
-
+  const [modeChangeEvents, setModeChangeEvents] = useState([]);
+  
   const handleAudioPause = () => {
     const currentTime = audioRef.current ? audioRef.current.currentTime : 0;
     const word = findWordAtTimestamp(currentTime, currentPage);
@@ -200,6 +201,10 @@ const findWordAtTimestamp = (timestamp, audioIndex) => {
 
   // Function to toggle between audio and text mode
   const toggleMode = () => {
+    const newMode = mode === "audio" ? "text" : "audio";
+    const changeString = `Mode change at ${Math.floor(totalTimer / 1000)}s - ${mode} to ${newMode} on page ${currentPage + 1}`;
+    setModeChangeEvents((prevEvents) => [...prevEvents, changeString]);
+    
     if (mode === "audio") {
       if (audioRef.current && !audioRef.current.paused) {
         audioRef.current.pause();
@@ -326,7 +331,8 @@ const findWordAtTimestamp = (timestamp, audioIndex) => {
     const totalTimeTaken = totalTimer / 1000;
     const eventsSummary = getAudioEventsSummary();
     console.log("Audio Events Summary:", eventsSummary);
-    // Dispatch the updateLectureInfo action with play and pause events
+    console.log("Mode Change Events:", modeChangeEvents);
+    // Dispatch the updateLectureInfo action with play and pause events and mode changes
     dispatch(
       updateLectureInfo(
         audioTimer / 1000,
@@ -343,7 +349,8 @@ const findWordAtTimestamp = (timestamp, audioIndex) => {
         pageText[1].val/1000,
         pageText[2].val/1000,
         pageText[3].val/1000,
-        pageText[4].val/1000
+        pageText[4].val/1000,
+        modeChangeEvents
       )
     );
     onCompletion(totalTimeTaken);
@@ -351,7 +358,9 @@ const findWordAtTimestamp = (timestamp, audioIndex) => {
     setAudioTimer(0);
     setTextTimer(0);
     setTotalTimer(0);
-    audioRef.current.pause();
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
   };
 
   useEffect(() => {
