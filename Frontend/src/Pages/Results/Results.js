@@ -28,7 +28,7 @@ export default function Results() {
   const preTestInfo = useSelector((state) => state.testInfo.preTest);
   const lectureInfo = useSelector((state) => state.testInfo.lecture);
   console.log("lectureInfo:", lectureInfo);
-  console.log("audioEvents:", lectureInfo.audioEvents);
+  console.log("audioEvents:", lectureInfo.audioEventsSummary);
   const postTestInfo = useSelector((state) => state.testInfo.postTest);
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -36,6 +36,61 @@ export default function Results() {
   const commonTimelineDuration = lectureInfo.audioEventsSummary
     ? computeCommonTimeline(lectureInfo.audioEventsSummary)
     : 10;
+
+  // Get all sentences with timing data (both audio and text)
+  const sentenceTimings = React.useMemo(() => {
+    const timings = [];
+    
+    // Get all sentence keys
+    const allSentenceKeys = new Set([
+      ...(lectureInfo.pageAudio ? Object.keys(lectureInfo.pageAudio).filter(k => k.startsWith('id')) : []),
+      ...(lectureInfo.pageText ? Object.keys(lectureInfo.pageText).filter(k => k.startsWith('id')) : [])
+    ]);
+    
+    // Extract existing numbered indices from legacy data
+    if (lectureInfo.pageAudio1 !== undefined) {
+      for (let i = 1; i <= 5; i++) {
+        if (lectureInfo[`pageAudio${i}`] !== undefined || lectureInfo[`pageText${i}`] !== undefined) {
+          timings.push({
+            sentenceNum: i,
+            audioTime: lectureInfo[`pageAudio${i}`] || 0,
+            textTime: lectureInfo[`pageText${i}`] || 0
+          });
+        }
+      }
+    } 
+    // Handle dynamic sentence data from the new structure
+    else if (lectureInfo.pageAudio && lectureInfo.pageText) {
+      // Find all sentence IDs in both pageAudio and pageText
+      const audioIds = Array.isArray(lectureInfo.pageAudio) 
+        ? lectureInfo.pageAudio.map(item => item.id) 
+        : [];
+      
+      const textIds = Array.isArray(lectureInfo.pageText)
+        ? lectureInfo.pageText.map(item => item.id)
+        : [];
+        
+      // Get union of all IDs
+      const allIds = [...new Set([...audioIds, ...textIds])];
+      
+      // Sort by ID
+      allIds.sort((a, b) => a - b);
+      
+      // Create timings entries
+      allIds.forEach(id => {
+        const audioItem = lectureInfo.pageAudio?.find(item => item.id === id);
+        const textItem = lectureInfo.pageText?.find(item => item.id === id);
+        
+        timings.push({
+          sentenceNum: id + 1, // Add 1 to make it 1-based instead of 0-based
+          audioTime: audioItem ? audioItem.val / 1000 : 0,
+          textTime: textItem ? textItem.val / 1000 : 0
+        });
+      });
+    }
+    
+    return timings;
+  }, [lectureInfo]);
 
   useEffect(() => {
     if (!audioData || audioData.length === 0) return;
@@ -165,68 +220,71 @@ export default function Results() {
       return "N/A";
     }
     const min = Math.floor(seconds / 60);
-    const sec = seconds % 60;
+    const sec = Math.floor(seconds % 60);
     return `${min} min ${sec} sec`;
   };
 
-  const [heartRateData, setHeartRateData] = useState({
-    "Before Pre Test": { amount: "", display: false },
-    // 'Pre Test': { amount: '', display: false },
-    "After Pre Test": { amount: "", display: false },
-    "Before Lecture": { amount: "", display: false },
-    "After Lecture": { amount: "", display: false },
-    "Before Post Test": { amount: "", display: false },
-
-    "After Post Test": { amount: "", display: false },
-  });
-
-  const handleSubmit = (type) => {
-    setHeartRateData({
-      ...heartRateData,
-      [type]: { ...heartRateData[type], display: true },
-    });
-  };
-
-  const navigateHome = () => {
-    navigate("/");
-  };
-
+  // ... existing heart rate code ...
+  
   const handleSaveResults = () => {
     setLoading(true);
-    console.log(loading);
     var rawAudioData = "";
-    for (var i in lectureInfo.audioData) {
-      rawAudioData += `|${lectureInfo.audioData[i]}|`;
+    if (lectureInfo.audioData) {
+      for (var i in lectureInfo.audioData) {
+        rawAudioData += `|${lectureInfo.audioData[i]}|`;
+      }
     }
+    
+    // Prepare audio and text times arrays (for backward compatibility)
+    let audioTimes = [];
+    let textTimes = [];
+    
+    // If we have legacy format data
+    if (lectureInfo.pageAudio1 !== undefined) {
+      audioTimes = [
+        lectureInfo?.pageAudio1,
+        lectureInfo?.pageAudio2,
+        lectureInfo?.pageAudio3,
+        lectureInfo?.pageAudio4,
+        lectureInfo?.pageAudio5,
+      ];
+      textTimes = [
+        lectureInfo?.pageText1,
+        lectureInfo?.pageText2,
+        lectureInfo?.pageText3,
+        lectureInfo?.pageText4,
+        lectureInfo?.pageText5,
+      ];
+    } 
+    // If we have the new format data
+    else if (sentenceTimings.length > 0) {
+      // Take the first 5 sentences for backward compatibility
+      const timingsToUse = sentenceTimings.slice(0, 5);
+      
+      audioTimes = timingsToUse.map(t => t.audioTime);
+      textTimes = timingsToUse.map(t => t.textTime);
+      
+      // Pad arrays to length 5 if needed
+      while (audioTimes.length < 5) audioTimes.push(0);
+      while (textTimes.length < 5) textTimes.push(0);
+    }
+    
     const data = {
       studentInfo: studentInfo,
       preTestInfo: preTestInfo,
       lectureInfo: lectureInfo,
       postTestInfo: postTestInfo,
       beforePreTestHeart: heartRateData["Before Pre Test"]["amount"],
-      // preTestHeart: heartRateData["Pre Test"]["amount"],
       afterPreTestHeart: heartRateData["After Pre Test"]["amount"],
       beforeLectureHeart: heartRateData["Before Lecture"]["amount"],
       afterLectureHeart: heartRateData["After Lecture"]["amount"],
       beforePostTestHeart: heartRateData["Before Post Test"]["amount"],
-      // postTestHeart: heartRateData["Post Test"]["amount"],
       afterPostTestHeart: heartRateData["After Post Test"]["amount"],
       audioRawData: rawAudioData,
-      audioTimes: [
-        lectureInfo?.pageAudio1,
-        lectureInfo?.pageAudio2,
-        lectureInfo?.pageAudio3,
-        lectureInfo?.pageAudio4,
-        lectureInfo?.pageAudio5,
-      ],
-      textTimes: [
-        lectureInfo?.pageText1,
-        lectureInfo?.pageText2,
-        lectureInfo?.pageText3,
-        lectureInfo?.pageText4,
-        lectureInfo?.pageText5,
-      ],
+      audioTimes,
+      textTimes,
     };
+    
     fetch("http://localhost:5000/api/addToSheet", {
       method: "POST",
       headers: {
@@ -246,7 +304,26 @@ export default function Results() {
     setLoading(false);
   };
 
-  
+  // ... existing heart rate code ...
+  const [heartRateData, setHeartRateData] = useState({
+    "Before Pre Test": { amount: "", display: false },
+    "After Pre Test": { amount: "", display: false },
+    "Before Lecture": { amount: "", display: false },
+    "After Lecture": { amount: "", display: false },
+    "Before Post Test": { amount: "", display: false },
+    "After Post Test": { amount: "", display: false },
+  });
+
+  const handleSubmit = (type) => {
+    setHeartRateData({
+      ...heartRateData,
+      [type]: { ...heartRateData[type], display: true },
+    });
+  };
+
+  const navigateHome = () => {
+    navigate("/");
+  };
 
   return (
     <div>
@@ -303,70 +380,66 @@ export default function Results() {
             </div>
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Audio Timings</h2>
-              <ul className="list-disc list-inside">
-                <li className="text-lg mb-2">
-                  Audio 1 Time: {formatTime(lectureInfo?.pageAudio1)}
-                </li>
-                <li className="text-lg mb-2">
-                  Audio 2 Time: {formatTime(lectureInfo?.pageAudio2)}
-                </li>
-                <li className="text-lg mb-2">
-                  Audio 3 Time: {formatTime(lectureInfo?.pageAudio3)}
-                </li>
-                <li className="text-lg mb-2">
-                  Audio 4 Time: {formatTime(lectureInfo?.pageAudio4)}
-                </li>
-                <li className="text-lg mb-2">
-                  Audio 5 Time: {formatTime(lectureInfo?.pageAudio5)}
-                </li>
+              <ul className="list-disc list-inside max-h-96 overflow-y-auto">
+                {sentenceTimings.length > 0 ? (
+                  sentenceTimings.map((timing, index) => (
+                    <li key={index} className="text-lg mb-2">
+                      Sentence {timing.sentenceNum} Time: {formatTime(timing.audioTime)}
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-lg mb-2">No audio timing data available</li>
+                )}
               </ul>
             </div>
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Text Timings</h2>
-              <ul className="list-disc list-inside">
-                <li className="text-lg mb-2">
-                  Paragraph 1 Time: {formatTime(lectureInfo?.pageText1)}
-                </li>
-                <li className="text-lg mb-2">
-                  Paragraph 2 Time: {formatTime(lectureInfo?.pageText2)}
-                </li>
-                <li className="text-lg mb-2">
-                  Paragraph 3 Time: {formatTime(lectureInfo?.pageText3)}
-                </li>
-                <li className="text-lg mb-2">
-                  Paragraph 4 Time: {formatTime(lectureInfo?.pageText4)}
-                </li>
-                <li className="text-lg mb-2">
-                  Paragraph 5 Time: {formatTime(lectureInfo?.pageText5)}
-                </li>
+              <ul className="list-disc list-inside max-h-96 overflow-y-auto">
+                {sentenceTimings.length > 0 ? (
+                  sentenceTimings.map((timing, index) => (
+                    <li key={index} className="text-lg mb-2">
+                      Sentence {timing.sentenceNum} Time: {formatTime(timing.textTime)}
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-lg mb-2">No text timing data available</li>
+                )}
               </ul>
             </div>
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Audio Events</h2>
-              {Object.keys(lectureInfo.audioEventsSummary || {}).map((audioFile) => (
-                <AudioTimeline
-                  key={audioFile}
-                  audioName={audioFile}
-                  pauses={lectureInfo.audioEventsSummary[audioFile].pauses}
-                  replays={lectureInfo.audioEventsSummary[audioFile].replays}
-                  timelineDuration={commonTimelineDuration}
-                />
-              ))}
+              <div className="max-h-96 overflow-y-auto">
+                {lectureInfo.audioEventsSummary && Object.keys(lectureInfo.audioEventsSummary).length > 0 ? (
+                  Object.keys(lectureInfo.audioEventsSummary).map((sentenceKey) => (
+                    <AudioTimeline
+                      key={sentenceKey}
+                      audioName={sentenceKey}
+                      pauses={lectureInfo.audioEventsSummary[sentenceKey].pauses}
+                      replays={lectureInfo.audioEventsSummary[sentenceKey].replays}
+                      timelineDuration={commonTimelineDuration}
+                    />
+                  ))
+                ) : (
+                  <p className="text-lg">No audio events recorded</p>
+                )}
+              </div>
             </div>
             
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Mode Changes</h2>
-              {lectureInfo.modeChangeEvents && lectureInfo.modeChangeEvents.length > 0 ? (
-                <ul className="list-disc list-inside">
-                  {lectureInfo.modeChangeEvents.map((event, index) => (
-                    <li key={index} className="text-lg mb-2">
-                      {event}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-lg">No mode changes recorded</p>
-              )}
+              <div className="max-h-96 overflow-y-auto">
+                {lectureInfo.modeChangeEvents && lectureInfo.modeChangeEvents.length > 0 ? (
+                  <ul className="list-disc list-inside">
+                    {lectureInfo.modeChangeEvents.map((event, index) => (
+                      <li key={index} className="text-lg mb-2">
+                        {event}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-lg">No mode changes recorded</p>
+                )}
+              </div>
             </div>
           </div>
 

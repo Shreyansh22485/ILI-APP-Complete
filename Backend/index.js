@@ -123,6 +123,137 @@ app.post('/api/addQuestion', async (req, res) => {
   }
 });
 
+app.post('/api/addContent', async (req, res) => {
+  try {
+    const content = req.body.content;
+    
+    // Split the content into sentences
+    // This regex splits by period, exclamation mark, or question mark followed by a space or end of string
+    const sentences = content.split(/(?<=[.!?])\s+|(?<=[.!?])$/);
+    
+    await doc.loadInfo();
+    
+    // Check if Content sheet exists
+    let contentSheet;
+    try {
+      contentSheet = doc.sheetsByTitle['Content'];
+      if (!contentSheet) {
+        // Try by index if not found by title
+        contentSheet = doc.sheetsByIndex[2];
+      }
+    } catch (err) {
+      console.log('Sheet not found, creating new one:', err);
+    }
+    
+    // If sheet doesn't exist or has no header row, create or update it
+    if (!contentSheet) {
+      console.log('Creating new Content sheet with headers');
+      contentSheet = await doc.addSheet({ 
+        title: 'Content', 
+        headerValues: ['Sentence'] 
+      });
+    } else {
+      // Check if the sheet has headers
+      const rows = await contentSheet.getRows();
+      if (contentSheet.headerValues.length === 0 || !contentSheet.headerValues.includes('Sentence')) {
+        console.log('Setting headers for existing sheet');
+        
+        // Get all current data
+        const currentData = rows.map(row => row._rawData);
+        
+        // Clear the sheet
+        await contentSheet.clear();
+        
+        // Set the headers
+        await contentSheet.setHeaderRow(['Sentence']);
+        
+        // Re-add the data if any exists
+        if (currentData.length > 0) {
+          const formattedData = currentData.map(row => ({ 'Sentence': row[0] }));
+          await contentSheet.addRows(formattedData);
+        }
+      }
+    }
+    
+    console.log('Content sheet:', contentSheet.title, 'with header values:', contentSheet.headerValues);
+    
+    // Clear existing content
+    const rows = await contentSheet.getRows();
+    console.log('Existing rows count:', rows.length);
+    
+    for (const row of rows) {
+      await row.delete();
+    }
+    
+    // Add new content sentences
+    const data = sentences
+      .filter(sentence => sentence.trim().length > 0)
+      .map(sentence => ({
+        'Sentence': sentence.trim()
+      }));
+    
+    console.log('Adding sentences:', data.length);
+    
+    if (data.length > 0) {
+      const addedRows = await contentSheet.addRows(data);
+      console.log('Added rows:', addedRows.length);
+    }
+    
+    res.status(200).json({ 
+      message: "Content Added", 
+      sentencesCount: data.length,
+      sheetTitle: contentSheet.title
+    });
+  } catch (error) {
+    console.error('Error Adding Content', error);
+    res.status(500).json({ message: 'Failed', error: error.message });
+  }
+});
+
+app.get('/api/fetchContent', async (req, res) => {
+  try {
+    await doc.loadInfo();
+    
+    // Check if Content sheet exists
+    let contentSheet;
+    try {
+      contentSheet = doc.sheetsByTitle['Content'];
+      if (!contentSheet) {
+        // Try by index if not found by title
+        contentSheet = doc.sheetsByIndex[2];
+      }
+    } catch (err) {
+      console.log('Sheet not found for fetch, creating new one:', err);
+      contentSheet = await doc.addSheet({ title: 'Content', headerValues: ['Sentence'] });
+    }
+    
+    if (!contentSheet) {
+      contentSheet = await doc.addSheet({ title: 'Content', headerValues: ['Sentence'] });
+    }
+    
+    console.log('Fetching from Content sheet:', contentSheet.title);
+    
+    const rows = await contentSheet.getRows();
+    console.log('Found rows:', rows.length);
+    
+    const sentences = rows.map(row => {
+      // Check both _rawData (for backward compatibility) and direct property access
+      return row._rawData?.[0] || row.Sentence || '';
+    }).filter(sentence => sentence.trim().length > 0);
+    
+    console.log('Returning sentences:', sentences.length);
+    
+    res.status(200).json({ 
+      message: "Content Fetched", 
+      data: sentences,
+      sheetTitle: contentSheet.title
+    });
+  } catch (error) {
+    console.error('Error Fetching Content', error);
+    res.status(500).json({ message: 'Failed', error: error.message });
+  }
+});
+
 app.get('/api/test', async (req, res) => {
   try {
     res.status(200).json({ message: 'Connection Works' });

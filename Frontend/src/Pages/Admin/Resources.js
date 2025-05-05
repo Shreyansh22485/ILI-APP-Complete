@@ -71,13 +71,39 @@ export default function Admin() {
     setLoadingState(false);
   };
 
-  const handleAddAudio = async (e) => {
+  const handleAddContent = async (e) => {
     setLoadingState(true);
-    console.log(e.target.paragraph.value);
-    console.log(e.target.audio_file.value);
     e.preventDefault();
-    e.target.paragraph.value = null;
-    e.target.audio_file.value = null;
+    const content = e.target.content.value;
+    
+    if (!content) {
+      alert("Please enter content");
+      setLoadingState(false);
+      return;
+    }
+    
+    // Send content to the backend
+    try {
+      const response = await fetch("http://localhost:5000/api/addContent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content }),
+      });
+      
+      const data = await response.json();
+      console.log(data);
+      
+      if (data.message === "Content Added") {
+        alert("Content added successfully!");
+        e.target.content.value = "";
+      }
+    } catch (error) {
+      console.error("Error adding content:", error);
+      alert("Failed to add content");
+    }
+    
     setLoadingState(false);
   };
 
@@ -209,7 +235,7 @@ export default function Admin() {
           <div className="text-3xl font-semibold pb-5">
             Question Management
             <a
-                  href='https://docs.google.com/spreadsheets/d/1otnCxVm1SUAkGvdThkxi3qxjnKOHnfRCYrxAWv5jD40/edit?usp=sharing'
+                  href='https://docs.google.com/spreadsheets/d/1pA3VyiVUa29FqiPW6LukGAdTpEQg_Uv8juQsaL-RZbw/edit?usp=sharing'
               className="text-blue-500 text-lg ml-5"
               target="_blank"
               rel="noopener noreferrer"
@@ -289,28 +315,24 @@ export default function Admin() {
                 </form>
               </div>
               <div>
-                <p className="text-xl pt-5">Add New Paragraph</p>
-                <form className="flex gap-5" onSubmit={handleAddAudio}>
-                  <input
-                    type="text"
-                    placeholder="Paragraph"
+                <p className="text-xl pt-5">Add Content</p>
+                <form className="flex flex-col" onSubmit={handleAddContent}>
+                  <textarea
+                    rows="6"
+                    placeholder="Enter content (will be split into sentences)"
                     className="border border-black px-4 py-2 rounded my-2"
-                    name="paragraph"
-                  />
-                  <input
-                    accept="audio/*"
-                    type="file"
-                    placeholder="Audio"
-                    className="border border-black px-4 py-2 rounded my-2"
-                    name="audio_file"
+                    name="content"
                   />
                   <button
                     type="submit"
                     className="border border-black px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 my-2"
                   >
-                    Add Paragraph
+                    Add Content
                   </button>
                 </form>
+                <p className="text-sm text-gray-500 mt-1">
+                  Note: Content will be split into individual sentences for lecture use
+                </p>
               </div>
             </div>
           ) : (
