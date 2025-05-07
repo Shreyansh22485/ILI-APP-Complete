@@ -16,8 +16,11 @@ const initialState = {
         textTimeTaken: null,
         timeTaken: null,
         audioData: null,
-        audioEvents: null,
+        audioEventsSummary: null,
         modeChangeEvents: null,
+        pageAudio: [],    // Added array to store all audio times
+        pageText: [],     // Added array to store all text times
+        // Keep these for backward compatibility
         pageAudio1: null,  
         pageAudio2: null, 
         pageAudio3: null, 
@@ -59,8 +62,11 @@ const testInfoReducer = (state = initialState, action) => {
                     textTimeTaken: action.payload.textTimeTaken,
                     timeTaken: action.payload.timeTaken,
                     audioData: action.payload.audioData,
-                    audioEvents: action.payload.audioEventsSummary,
+                    audioEventsSummary: action.payload.audioEventsSummary,
                     modeChangeEvents: action.payload.modeChangeEvents,
+                    pageAudio: action.payload.pageAudio || [],
+                    pageText: action.payload.pageText || [],
+                    // Keep these for backward compatibility
                     pageAudio1: action.payload.pageAudio1,
                     pageAudio2: action.payload.pageAudio2,
                     pageAudio3: action.payload.pageAudio3,

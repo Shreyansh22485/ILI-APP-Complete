@@ -79,6 +79,11 @@ export default function Lecture({ onCompletion }) {
       
       utterance.onend = () => {
         handleAudioPause();
+        
+        // Auto-advance to next sentence when audio finishes if not the last sentence
+        if (currentPage < sentences.length - 1 && mode === "audio" && lectureStarted) {
+          handleNextPage();
+        }
       };
       
       utterance.onerror = (event) => {
@@ -225,18 +230,11 @@ export default function Lecture({ onCompletion }) {
     console.log("Audio Events Summary:", eventsByAudio);
     console.log("Mode Change Events:", modeChangeEvents);
     
-    // Extract page timing values
+    // Extract page timing values for all sentences
     const pageAudioValues = pageAudio.map(item => item.val / 1000);
     const pageTextValues = pageText.map(item => item.val / 1000);
     
-    // Ensure we have at least 5 values (for backward compatibility)
-    const audioValues = [...pageAudioValues];
-    const textValues = [...pageTextValues];
-    
-    while (audioValues.length < 5) audioValues.push(0);
-    while (textValues.length < 5) textValues.push(0);
-    
-    // Dispatch the updateLectureInfo action
+    // Dispatch the updateLectureInfo action with dynamic arrays
     dispatch(
       updateLectureInfo(
         audioTimer / 1000,
@@ -244,16 +242,8 @@ export default function Lecture({ onCompletion }) {
         totalTimeTaken,
         audioPlayEvents,
         eventsByAudio,
-        audioValues[0],
-        audioValues[1],
-        audioValues[2],
-        audioValues[3],
-        audioValues[4],
-        textValues[0],
-        textValues[1],
-        textValues[2],
-        textValues[3],
-        textValues[4],
+        pageAudioValues,
+        pageTextValues,
         modeChangeEvents
       )
     );

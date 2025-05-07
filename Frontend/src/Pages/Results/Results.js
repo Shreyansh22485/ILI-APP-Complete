@@ -41,14 +41,19 @@ export default function Results() {
   const sentenceTimings = React.useMemo(() => {
     const timings = [];
     
-    // Get all sentence keys
-    const allSentenceKeys = new Set([
-      ...(lectureInfo.pageAudio ? Object.keys(lectureInfo.pageAudio).filter(k => k.startsWith('id')) : []),
-      ...(lectureInfo.pageText ? Object.keys(lectureInfo.pageText).filter(k => k.startsWith('id')) : [])
-    ]);
-    
-    // Extract existing numbered indices from legacy data
-    if (lectureInfo.pageAudio1 !== undefined) {
+    // Handle dynamic sentence data
+    if (lectureInfo.pageAudio && Array.isArray(lectureInfo.pageAudio)) {
+      // Create timings entries for each sentence
+      for (let i = 0; i < lectureInfo.pageAudio.length; i++) {
+        timings.push({
+          sentenceNum: i + 1, // Add 1 to make it 1-based instead of 0-based
+          audioTime: lectureInfo.pageAudio[i] || 0,
+          textTime: lectureInfo.pageText && lectureInfo.pageText[i] ? lectureInfo.pageText[i] : 0
+        });
+      }
+    } 
+    // Legacy data handling (for backward compatibility)
+    else if (lectureInfo.pageAudio1 !== undefined) {
       for (let i = 1; i <= 5; i++) {
         if (lectureInfo[`pageAudio${i}`] !== undefined || lectureInfo[`pageText${i}`] !== undefined) {
           timings.push({
@@ -58,35 +63,6 @@ export default function Results() {
           });
         }
       }
-    } 
-    // Handle dynamic sentence data from the new structure
-    else if (lectureInfo.pageAudio && lectureInfo.pageText) {
-      // Find all sentence IDs in both pageAudio and pageText
-      const audioIds = Array.isArray(lectureInfo.pageAudio) 
-        ? lectureInfo.pageAudio.map(item => item.id) 
-        : [];
-      
-      const textIds = Array.isArray(lectureInfo.pageText)
-        ? lectureInfo.pageText.map(item => item.id)
-        : [];
-        
-      // Get union of all IDs
-      const allIds = [...new Set([...audioIds, ...textIds])];
-      
-      // Sort by ID
-      allIds.sort((a, b) => a - b);
-      
-      // Create timings entries
-      allIds.forEach(id => {
-        const audioItem = lectureInfo.pageAudio?.find(item => item.id === id);
-        const textItem = lectureInfo.pageText?.find(item => item.id === id);
-        
-        timings.push({
-          sentenceNum: id + 1, // Add 1 to make it 1-based instead of 0-based
-          audioTime: audioItem ? audioItem.val / 1000 : 0,
-          textTime: textItem ? textItem.val / 1000 : 0
-        });
-      });
     }
     
     return timings;
@@ -304,6 +280,63 @@ export default function Results() {
     setLoading(false);
   };
 
+  // Handle downloading results as JSON file
+  const handleDownloadResults = () => {
+    // Create a complete data object with all results
+    const resultsData = {
+      studentInfo: {
+        name: studentInfo?.name || "Unknown Student",
+        timestamp: new Date().toISOString()
+      },
+      preTest: {
+        score: preTestInfo?.score || 0,
+        timeTaken: preTestInfo?.timeTaken || 0,
+        questionData: preTestInfo?.questionData || []
+      },
+      lecture: {
+        audioTimeTaken: lectureInfo?.audioTimeTaken || 0,
+        textTimeTaken: lectureInfo?.textTimeTaken || 0,
+        totalTimeTaken: lectureInfo?.timeTaken || 0,
+        sentenceTimings: sentenceTimings || [],
+        audioEvents: lectureInfo?.audioEventsSummary || {},
+        modeChanges: lectureInfo?.modeChangeEvents || []
+      },
+      postTest: {
+        score: postTestInfo?.score || 0,
+        timeTaken: postTestInfo?.timeTaken || 0,
+        questionData: postTestInfo?.questionData || []
+      },
+      heartRate: {
+        beforePreTest: heartRateData["Before Pre Test"]?.amount || "",
+        afterPreTest: heartRateData["After Pre Test"]?.amount || "",
+        beforeLecture: heartRateData["Before Lecture"]?.amount || "",
+        afterLecture: heartRateData["After Lecture"]?.amount || "",
+        beforePostTest: heartRateData["Before Post Test"]?.amount || "",
+        afterPostTest: heartRateData["After Post Test"]?.amount || ""
+      }
+    };
+
+    // Convert to JSON string and create a Blob
+    const jsonData = JSON.stringify(resultsData, null, 2);
+    const blob = new Blob([jsonData], { type: "application/json" });
+    
+    // Create download link and trigger download
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const fileName = `results_${studentInfo?.name || "student"}_${new Date().toISOString().split("T")[0]}.json`;
+    
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    
+    // Clean up
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast.success("Results downloaded successfully!");
+  };
+
   // ... existing heart rate code ...
   const [heartRateData, setHeartRateData] = useState({
     "Before Pre Test": { amount: "", display: false },
@@ -380,35 +413,39 @@ export default function Results() {
             </div>
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Audio Timings</h2>
-              <ul className="list-disc list-inside max-h-96 overflow-y-auto">
-                {sentenceTimings.length > 0 ? (
-                  sentenceTimings.map((timing, index) => (
-                    <li key={index} className="text-lg mb-2">
-                      Sentence {timing.sentenceNum} Time: {formatTime(timing.audioTime)}
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-lg mb-2">No audio timing data available</li>
-                )}
-              </ul>
+              <div className="max-h-96 overflow-y-auto pr-2">
+                <ul className="list-disc list-inside">
+                  {sentenceTimings.length > 0 ? (
+                    sentenceTimings.map((timing, index) => (
+                      <li key={index} className="text-lg mb-2">
+                        Sentence {timing.sentenceNum} Time: {formatTime(timing.audioTime)}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-lg mb-2">No audio timing data available</li>
+                  )}
+                </ul>
+              </div>
             </div>
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Text Timings</h2>
-              <ul className="list-disc list-inside max-h-96 overflow-y-auto">
-                {sentenceTimings.length > 0 ? (
-                  sentenceTimings.map((timing, index) => (
-                    <li key={index} className="text-lg mb-2">
-                      Sentence {timing.sentenceNum} Time: {formatTime(timing.textTime)}
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-lg mb-2">No text timing data available</li>
-                )}
-              </ul>
+              <div className="max-h-96 overflow-y-auto pr-2">
+                <ul className="list-disc list-inside">
+                  {sentenceTimings.length > 0 ? (
+                    sentenceTimings.map((timing, index) => (
+                      <li key={index} className="text-lg mb-2">
+                        Sentence {timing.sentenceNum} Time: {formatTime(timing.textTime)}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-lg mb-2">No text timing data available</li>
+                  )}
+                </ul>
+              </div>
             </div>
             <div className="bg-white shadow-lg rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Audio Events</h2>
-              <div className="max-h-96 overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto overflow-x-auto">
                 {lectureInfo.audioEventsSummary && Object.keys(lectureInfo.audioEventsSummary).length > 0 ? (
                   Object.keys(lectureInfo.audioEventsSummary).map((sentenceKey) => (
                     <AudioTimeline
@@ -497,6 +534,12 @@ export default function Results() {
               className="bg-white text-black py-2 px-4 mt-2 border-[1px] border-black rounded hover:bg-gray-400 transition duration-300"
             >
               Save Results
+            </button>
+            <button
+              onClick={handleDownloadResults}
+              className="bg-white text-black py-2 px-4 mt-2 border-[1px] border-black rounded hover:bg-gray-400 transition duration-300"
+            >
+              Download Results
             </button>
             <button
               onClick={navigateHome}
