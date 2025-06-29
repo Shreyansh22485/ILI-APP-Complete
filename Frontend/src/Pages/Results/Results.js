@@ -447,18 +447,33 @@ export default function Results() {
               <h2 className="text-2xl font-semibold mb-4">Audio Events</h2>
               <div className="max-h-96 overflow-y-auto overflow-x-auto">
                 {lectureInfo.audioEventsSummary && Object.keys(lectureInfo.audioEventsSummary).length > 0 ? (
-                  Object.keys(lectureInfo.audioEventsSummary).map((sentenceKey) => (
-                    <AudioTimeline
-                      key={sentenceKey}
-                      audioName={sentenceKey}
-                      pauses={lectureInfo.audioEventsSummary[sentenceKey].pauses}
-                      replays={lectureInfo.audioEventsSummary[sentenceKey].replays}
-                      timelineDuration={commonTimelineDuration}
-                    />
-                  ))
+                  Object.entries(lectureInfo.audioEventsSummary)
+                    // Filter to only show sentences with at least one pause or replay
+                    .filter(([_, events]) => 
+                      (events.pauses && events.pauses.length > 0) || 
+                      (events.replays && events.replays.length > 0)
+                    )
+                    .map(([sentenceKey, events]) => (
+                      <AudioTimeline
+                        key={sentenceKey}
+                        audioName={sentenceKey}
+                        pauses={events.pauses}
+                        replays={events.replays}
+                        timelineDuration={commonTimelineDuration}
+                      />
+                    ))
                 ) : (
                   <p className="text-lg">No audio events recorded</p>
                 )}
+                {lectureInfo.audioEventsSummary && 
+                  Object.entries(lectureInfo.audioEventsSummary).filter(
+                    ([_, events]) => 
+                      (events.pauses && events.pauses.length > 0) || 
+                      (events.replays && events.replays.length > 0)
+                  ).length === 0 && (
+                    <p className="text-lg">No pause or replay events recorded for any sentence</p>
+                  )
+                }
               </div>
             </div>
             

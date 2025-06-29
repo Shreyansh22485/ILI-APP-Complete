@@ -78,9 +78,8 @@ export default function Lecture({ onCompletion }) {
       };
       
       utterance.onend = () => {
-        handleAudioPause();
-        
-        // Auto-advance to next sentence when audio finishes if not the last sentence
+        // Don't record pause event for natural end of speech
+        // Just auto-advance to next sentence when audio finishes
         if (currentPage < sentences.length - 1 && mode === "audio" && lectureStarted) {
           handleNextPage();
         }
@@ -114,7 +113,7 @@ export default function Lecture({ onCompletion }) {
   const stopSpeech = () => {
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
-      handleAudioPause();
+      // handleAudioPause();
     }
   };
   
