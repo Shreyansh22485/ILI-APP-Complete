@@ -11,7 +11,7 @@ export default function AdminLanding(){
         navigate('/resources');
     }
     const handleClick3 = (e) => {
-        navigate('/brailleAnalytics');
+        navigate('/braille-analytics');
     }
     return (
         <div>

@@ -278,6 +278,9 @@ app.post('/api/addBrailleResults', async (req, res) => {
     let brailleSheet;
     try {
       brailleSheet = doc.sheetsByTitle['Braille Results'];
+      if (!brailleSheet) {
+        throw new Error('Sheet not found');
+      }
     } catch (err) {
       console.log('Creating Braille Results sheet');
       brailleSheet = await doc.addSheet({ 
@@ -289,6 +292,11 @@ app.post('/api/addBrailleResults', async (req, res) => {
           'Overall Accuracy (%)', 'Total Errors', 'Session Complete'
         ]
       });
+    }
+
+    // Ensure the sheet was created/found
+    if (!brailleSheet) {
+      throw new Error('Failed to create or find Braille Results sheet');
     }
 
     const data = [{
@@ -324,6 +332,9 @@ app.post('/api/addBrailleLetterStats', async (req, res) => {
     let letterStatsSheet;
     try {
       letterStatsSheet = doc.sheetsByTitle['Letter Stats'];
+      if (!letterStatsSheet) {
+        throw new Error('Sheet not found');
+      }
     } catch (err) {
       console.log('Creating Letter Stats sheet');
       letterStatsSheet = await doc.addSheet({
@@ -333,6 +344,11 @@ app.post('/api/addBrailleLetterStats', async (req, res) => {
           'Average Time (ms)', 'Fastest Time (ms)', 'Slowest Time (ms)', 'Date'
         ]
       });
+    }
+
+    // Ensure the sheet was created/found
+    if (!letterStatsSheet) {
+      throw new Error('Failed to create or find Letter Stats sheet');
     }
 
     const data = Object.keys(letterStats).map(letter => ({
@@ -426,6 +442,73 @@ app.get('/api/fetchBrailleResults', async (req, res) => {
   } catch (error) {
     console.error('Error fetching Braille results', error);
     res.status(500).json({ message: 'Failed to fetch Braille results', error: error.message });
+  }
+});
+
+app.get('/api/fetchStudentLetterStats/:studentName', async (req, res) => {
+  try {
+    const { studentName } = req.params;
+    await doc.loadInfo();
+    
+    let letterStatsSheet;
+    try {
+      letterStatsSheet = doc.sheetsByTitle['Letter Stats'];
+    } catch (err) {
+      return res.status(200).json({ message: "No letter stats found", data: [] });
+    }
+
+    const rows = await letterStatsSheet.getRows();
+    const studentStats = rows
+      .filter(row => row._rawData[0] === studentName)
+      .map(row => ({
+        studentName: row._rawData[0],
+        letter: row._rawData[1],
+        attempts: parseInt(row._rawData[2]) || 0,
+        correctAttempts: parseInt(row._rawData[3]) || 0,
+        accuracy: parseFloat(row._rawData[4]) || 0,
+        averageTime: parseInt(row._rawData[5]) || 0,
+        fastestTime: parseInt(row._rawData[6]) || 0,
+        slowestTime: parseInt(row._rawData[7]) || 0,
+        date: row._rawData[8]
+      }));
+
+    res.status(200).json({ message: "Letter stats fetched successfully", data: studentStats });
+  } catch (error) {
+    console.error('Error fetching letter stats', error);
+    res.status(500).json({ message: 'Failed to fetch letter stats', error: error.message });
+  }
+});
+
+app.get('/api/fetchStudentWordStats/:studentName', async (req, res) => {
+  try {
+    const { studentName } = req.params;
+    await doc.loadInfo();
+    
+    let wordStatsSheet;
+    try {
+      wordStatsSheet = doc.sheetsByTitle['Word Stats'];
+    } catch (err) {
+      return res.status(200).json({ message: "No word stats found", data: [] });
+    }
+
+    const rows = await wordStatsSheet.getRows();
+    const studentStats = rows
+      .filter(row => row._rawData[0] === studentName)
+      .map(row => ({
+        studentName: row._rawData[0],
+        word: row._rawData[1],
+        attempts: parseInt(row._rawData[2]) || 0,
+        completed: row._rawData[3] === 'Yes',
+        accuracy: parseFloat(row._rawData[4]) || 0,
+        totalTime: parseInt(row._rawData[5]) || 0,
+        errors: parseInt(row._rawData[6]) || 0,
+        date: row._rawData[7]
+      }));
+
+    res.status(200).json({ message: "Word stats fetched successfully", data: studentStats });
+  } catch (error) {
+    console.error('Error fetching word stats', error);
+    res.status(500).json({ message: 'Failed to fetch word stats', error: error.message });
   }
 });
 
