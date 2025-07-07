@@ -1,15 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { updatePreTestInfo } from '../../redux/actions';
-import { BRAILLE_ALPHABET, getBraillePattern, isCorrectPattern, BRAILLE_KEYS } from '../../utils/brailleMapping';
+import { BRAILLE_ALPHABET, getBraillePattern, isCorrectPattern, BRAILLE_KEYS, BRAILLE_KEY_MAPPING } from '../../utils/brailleMapping';
 import { VoiceInstructor } from '../../utils/voiceInstructor';
 import BeatLoader from "react-spinners/BeatLoader";
 
 const BrailleLetterTraining = ({ onComplete, title }) => {
+  // Orbit Reader 40 specific key mapping (based on observed behavior)
+  // The Orbit Reader sends the actual Braille character when keys are pressed together
+  const ORBIT_READER_LETTER_MAPPING = {
+    'a': 'a', // Letter A (dot 1) → sends 'a'
+    'b': 'b', // Letter B (dots 1,2) → sends 'b'
+    'c': 'c', // Letter C (dots 1,4) → sends 'c'
+    'd': 'd', // Letter D (dots 1,4,5) → sends 'd'
+    'e': 'e', // Letter E (dots 1,5) → sends 'e'
+    'f': 'f', // Letter F (dots 1,2,4) → sends 'f'
+    // Add more as we discover the pattern
+  };
+
   // Training phases
   const [currentPhase, setCurrentPhase] = useState('instruction'); // instruction, training, completed
   const [currentLetterIndex, setCurrentLetterIndex] = useState(0);
   const [pressedKeys, setPressedKeys] = useState(new Set());
+  const [keydownEvents, setKeydownEvents] = useState(new Set()); // Track actual keydown events
   const [isWaitingForInput, setIsWaitingForInput] = useState(false);
   const [loadingState, setLoadingState] = useState(false);
   
@@ -22,6 +35,9 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
   // Voice instructor
   const voiceInstructor = useRef(new VoiceInstructor());
   const dispatch = useDispatch();
+  
+  // Ref for the input element to ensure it stays focused
+  const brailleInputRef = useRef(null);
 
   useEffect(() => {
     // Initialize letter stats
@@ -48,6 +64,11 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
     // Add keyboard event listeners
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    
+    // Ensure the input element is focused when training starts
+    if (currentPhase === 'training' && brailleInputRef.current) {
+      brailleInputRef.current.focus();
+    }
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -79,6 +100,7 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
     
     setIsWaitingForInput(false);
     setPressedKeys(new Set());
+    setKeydownEvents(new Set()); // Reset keydown events
     
     // Give voice instruction
     const instruction = `Letter ${letter.toUpperCase()}: Press keys ${pattern.join(', ')}`;
@@ -87,17 +109,26 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
     
     setIsWaitingForInput(true);
     setStartTime(Date.now());
-  };const handleKeyDown = (event) => {
+  };  const handleKeyDown = (event) => {
     if (currentPhase !== 'training' || !isWaitingForInput) return;
     
     const key = event.key;
-    console.log('Key down:', key, 'Valid key:', BRAILLE_KEYS.includes(key));
+    console.log('Key down:', key, 'Standard valid key:', BRAILLE_KEYS.includes(key), 'Orbit Reader letter:', ORBIT_READER_LETTER_MAPPING[key] !== undefined);
     
-    if (BRAILLE_KEYS.includes(key)) {
+    // Check if it's a standard Braille key OR an Orbit Reader letter
+    if (BRAILLE_KEYS.includes(key) || ORBIT_READER_LETTER_MAPPING[key] !== undefined) {
       event.preventDefault();
+      
+      // Track both pressed keys and keydown events
       setPressedKeys(prev => {
         const newSet = new Set([...prev, key]);
         console.log('Updated pressed keys (keydown):', Array.from(newSet));
+        return newSet;
+      });
+      
+      setKeydownEvents(prev => {
+        const newSet = new Set([...prev, key]);
+        console.log('Updated keydown events:', Array.from(newSet));
         return newSet;
       });
     }
@@ -107,40 +138,41 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
     if (currentPhase !== 'training' || !isWaitingForInput) return;
     
     const key = event.key;
-    console.log('Key up:', key, 'Valid key:', BRAILLE_KEYS.includes(key));
+    console.log('Key up:', key, 'Standard valid key:', BRAILLE_KEYS.includes(key), 'Orbit Reader letter:', ORBIT_READER_LETTER_MAPPING[key] !== undefined);
     
-    if (BRAILLE_KEYS.includes(key)) {
+    // Check if it's a standard Braille key OR Orbit Reader letter OR "Unidentified" (common with screen readers)
+    if (BRAILLE_KEYS.includes(key) || ORBIT_READER_LETTER_MAPPING[key] !== undefined || key === "Unidentified") {
       event.preventDefault();
       
-      // For single letter training, validate immediately using current state
-      // Pass the current pressed keys to avoid stale state issues
-      setPressedKeys(currentKeys => {
-        console.log('Current keys in setState callback:', Array.from(currentKeys));
-        
-        // Validate with the current state
-        setTimeout(() => {
-          if (currentKeys.size > 0) {
-            validateWithKeys(currentKeys);
+      // Use current keydown events for validation
+      setTimeout(() => {
+        setKeydownEvents(currentEvents => {
+          console.log('Current keydown events for validation:', Array.from(currentEvents));
+          if (currentEvents.size > 0) {
+            validateWithKeydownEvents(currentEvents);
           }
-        }, 200);
-        
-        return currentKeys; // Don't change the state, just use it for validation
-      });
+          return currentEvents;
+        });
+      }, 100);
     }
   };
 
-  const validateWithKeys = async (keysToValidate) => {
+  const validateWithKeydownEvents = async (keydownEventsToValidate) => {
     const letter = letters[currentLetterIndex];
     const timeTaken = Date.now() - startTime;
     
+    // For Orbit Reader: Direct letter-to-letter comparison
+    const expectedKey = ORBIT_READER_LETTER_MAPPING[letter];
+    const actualKeys = Array.from(keydownEventsToValidate);
+    const isCorrect = actualKeys.length === 1 && actualKeys[0] === expectedKey;
+    
     // Debug logging
-    console.log('=== DEBUGGING VALIDATION ===');
+    console.log('=== DEBUGGING KEYDOWN VALIDATION ===');
     console.log('Current letter:', letter);
-    console.log('Keys to validate (Set):', keysToValidate);
-    console.log('Keys to validate (Array):', Array.from(keysToValidate));
-    console.log('Expected pattern:', getBraillePattern(letter));
-    console.log('Validation result:', isCorrectPattern(keysToValidate, letter));
-    console.log('===============================');
+    console.log('Keydown events:', actualKeys);
+    console.log('Expected key for letter:', expectedKey);
+    console.log('Validation result:', isCorrect);
+    console.log('====================================');
     
     // Update stats
     setLetterStats(prev => {
@@ -148,14 +180,16 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
       updated[letter].attempts += 1;
       updated[letter].timeSpent += timeTaken;
       
-      if (isCorrectPattern(keysToValidate, letter)) {
+      if (isCorrect) {
         updated[letter].correctAttempts += 1;
       } else {
-        updated[letter].errorPatterns.push([...keysToValidate]);
+        updated[letter].errorPatterns.push([...keydownEventsToValidate]);
       }
       
       return updated;
-    });    if (isCorrectPattern(keysToValidate, letter)) {
+    });
+
+    if (isCorrect) {
       // Correct input
       await voiceInstructor.current.speakSuccess(letter);
       
@@ -179,6 +213,7 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
           
           setIsWaitingForInput(false);
           setPressedKeys(new Set());
+          setKeydownEvents(new Set()); // Reset keydown events
           
           // Give voice instruction for next letter
           const instruction = `Letter ${nextLetter.toUpperCase()}: Press keys ${nextPattern.join(', ')}`;
@@ -197,10 +232,17 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
       // Reset for retry
       setTimeout(() => {
         setPressedKeys(new Set());
+        setKeydownEvents(new Set()); // Reset keydown events
         setIsWaitingForInput(true);
         setStartTime(Date.now());
       }, 2000);
-    }  };
+    }
+  };
+
+  // Helper function to get expected key for a letter based on Orbit Reader mapping
+  const getExpectedKeyForLetter = (letter) => {
+    return ORBIT_READER_LETTER_MAPPING[letter] || letter;
+  };
   const completeTraining = async () => {
     setCurrentPhase('completed');
     setIsWaitingForInput(false);
@@ -279,6 +321,19 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
 
   return (
     <div className="mx-auto py-4 px-8">
+      {/* Input field for Braille keyboard focus - helps switch from browse to focus mode */}
+      <input
+        ref={brailleInputRef}
+        type="text"
+        placeholder="Braille input active - press Braille keys here"
+        className="w-full p-3 mb-4 border-2 border-blue-500 rounded-lg text-center font-bold bg-blue-50"
+        autoFocus
+        tabIndex={0}
+        onFocus={() => console.log('Braille input focused')}
+        onChange={() => {}} // Prevent text input
+        value=""
+      />
+      
       <h2 className="text-2xl font-semibold my-6">{title || 'Braille Letter Training'}</h2>
       
       {currentPhase === 'training' && (
@@ -311,7 +366,9 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
                 <div className="font-semibold mb-1">Debug Info:</div>
                 <div>Current letter: <strong>{letters[currentLetterIndex]}</strong></div>
                 <div>Expected dots: <strong>[{getCurrentLetterPattern().join(', ')}]</strong></div>
+                <div>Expected key: <strong>{getExpectedKeyForLetter(letters[currentLetterIndex])}</strong></div>
                 <div>Pressed keys: <strong>[{Array.from(pressedKeys).join(', ')}]</strong></div>
+                <div>Keydown events: <strong>[{Array.from(keydownEvents).join(', ')}]</strong></div>
                 <div>Waiting for input: <strong>{isWaitingForInput ? 'Yes' : 'No'}</strong></div>
               </div>
               
