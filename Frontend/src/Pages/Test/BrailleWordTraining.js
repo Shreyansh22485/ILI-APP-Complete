@@ -1,11 +1,41 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch } from 'react-redux';
-import { BRAILLE_ALPHABET, isCorrectPattern, dotsToKeys, getRandomWord } from '../../utils/brailleMapping';
+import { BRAILLE_ALPHABET, getBraillePattern, isCorrectPattern, dotsToKeys, getRandomWord } from '../../utils/brailleMapping';
 import { VoiceInstructor } from '../../utils/voiceInstructor';
 
 const BrailleWordTraining = ({ onComplete, studentId }) => {
   const dispatch = useDispatch();
   const [voiceInstructor] = useState(new VoiceInstructor());
+  
+  // Orbit Reader 40 specific key mapping (same as letter training)
+  const ORBIT_READER_LETTER_MAPPING = {
+    'a': 'a', // Letter A (dot 1) → sends 'a'
+    'b': 'b', // Letter B (dots 1,2) → sends 'b'
+    'c': 'c', // Letter C (dots 1,4) → sends 'c'
+    'd': 'd', // Letter D (dots 1,4,5) → sends 'd'
+    'e': 'e', // Letter E (dots 1,5) → sends 'e'
+    'f': 'f', // Letter F (dots 1,2,4) → sends 'f'
+    'g': 'g', // Letter G (dots 1,2,4,5) → sends 'g'
+    'h': 'h', // Letter H (dots 1,2,5) → sends 'h'
+    'i': 'i', // Letter I (dots 2,4) → sends 'i'
+    'j': 'j', // Letter J (dots 2,4,5) → sends 'j'
+    'k': 'k', // Letter K (dots 1,3) → sends 'k'
+    'l': 'l', // Letter L (dots 1,2,3) → sends 'l'
+    'm': 'm', // Letter M (dots 1,3,4) → sends 'm'
+    'n': 'n', // Letter N (dots 1,3,4,5) → sends 'n'
+    'o': 'o', // Letter O (dots 1,3,5) → sends 'o'
+    'p': 'p', // Letter P (dots 1,2,3,4) → sends 'p'
+    'q': 'q', // Letter Q (dots 1,2,3,4,5) → sends 'q'
+    'r': 'r', // Letter R (dots 1,2,3,5) → sends 'r'
+    's': 's', // Letter S (dots 2,3,4) → sends 's'
+    't': 't', // Letter T (dots 2,3,4,5) → sends 't'
+    'u': 'u', // Letter U (dots 1,3,6) → sends 'u'
+    'v': 'v', // Letter V (dots 1,2,3,6) → sends 'v'
+    'w': 'w', // Letter W (dots 2,4,5,6) → sends 'w'
+    'x': 'x', // Letter X (dots 1,3,4,6) → sends 'x'
+    'y': 'y', // Letter Y (dots 1,3,4,5,6) → sends 'y'
+    'z': 'z'  // Letter Z (dots 1,3,5,6) → sends 'z'
+  };
   
   // Training state
   const [currentWord, setCurrentWord] = useState('');
@@ -15,11 +45,13 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
   const [totalWords] = useState(2); // Number of words to practice
     // Input state
   const [pressedKeys, setPressedKeys] = useState(new Set());
+  const [keydownEvents, setKeydownEvents] = useState(new Set()); // Track actual keydown events
   const [isInputActive, setIsInputActive] = useState(true);
   const [isWaitingForInput, setIsWaitingForInput] = useState(true);
   
   // Analytics
   const [wordStats, setWordStats] = useState({});
+  const [deviceUsageStats, setDeviceUsageStats] = useState({}); // Track which device was used for each word/letter
   const [startTime, setStartTime] = useState(null);
   const [letterStartTime, setLetterStartTime] = useState(null);
     // UI state
@@ -60,6 +92,17 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
       }
     }));
     
+    // Initialize device usage stats for this word
+    setDeviceUsageStats(prev => ({
+      ...prev,
+      [word]: {
+        letters: {},
+        standardKeyboard: 0,
+        orbitReader: 0,
+        letterAttempts: []
+      }
+    }));
+    
     // Speak the word with proper sequential timing
     const speakInstructions = async () => {
       // Small delay before starting instructions
@@ -73,7 +116,8 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       console.log('Speaking letter instruction for:', word[0]);
-      await voiceInstructor.speak(`Type the letter ${word[0].toUpperCase()}`);
+      const firstLetterPattern = getBraillePattern(word[0]);
+      await voiceInstructor.speak(`Type the letter ${word[0].toUpperCase()}: Press keys ${firstLetterPattern.join(', ')}`);
       console.log('Letter instruction completed');
       
       // Reset the flag after all instructions are complete
@@ -139,25 +183,57 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
     
     initializeTraining();  }, []); // Remove startNewWord dependency to prevent recreation
 
-  const validateWithKeys = useCallback(async (keysToValidate) => {
+  const validateWithKeydownEvents = useCallback(async (keydownEventsToValidate) => {
     const currentLetter = currentWord[currentLetterIndex];
-    const expectedPattern = BRAILLE_ALPHABET[currentLetter.toLowerCase()];
-    const expectedKeys = dotsToKeys(expectedPattern);
+    const timeTaken = Date.now() - letterStartTime;
     
-    console.log('=== WORD TRAINING DEBUG ===');
+    // Determine which device was used and validate accordingly
+    const actualKeys = Array.from(keydownEventsToValidate);
+    let isCorrect = false;
+    let deviceUsed = '';
+    
+    // Check if it's Orbit Reader input (single letter key)
+    const expectedOrbitKey = ORBIT_READER_LETTER_MAPPING[currentLetter.toLowerCase()];
+    const isOrbitReaderInput = actualKeys.length === 1 && actualKeys[0] === expectedOrbitKey;
+    
+    // Check if it's standard Braille keyboard input (multiple dot keys)
+    const brailleKeys = ['f', 'd', 's', 'a', 'j', 'k', 'l', ';'];
+    const isStandardInput = actualKeys.every(key => brailleKeys.includes(key));
+    const isCorrectStandardPattern = isStandardInput && isCorrectPattern(actualKeys, currentLetter);
+    
+    if (isOrbitReaderInput) {
+      isCorrect = true;
+      deviceUsed = 'orbitReader';
+    } else if (isCorrectStandardPattern) {
+      isCorrect = true;
+      deviceUsed = 'standardKeyboard';
+    } else {
+      isCorrect = false;
+      // Try to determine which device was intended
+      if (actualKeys.length === 1 && ORBIT_READER_LETTER_MAPPING[actualKeys[0]]) {
+        deviceUsed = 'orbitReader';
+      } else if (isStandardInput) {
+        deviceUsed = 'standardKeyboard';
+      } else {
+        deviceUsed = 'unknown';
+      }
+    }
+    
+    console.log('=== WORD TRAINING DUAL DEVICE DEBUG ===');
     console.log('Current word:', currentWord);
     console.log('Current letter index:', currentLetterIndex);
     console.log('Current letter:', currentLetter);
-    console.log('Expected pattern:', expectedPattern);
-    console.log('Expected keys:', expectedKeys);
-    console.log('Keys to validate (Set):', keysToValidate);
-    console.log('Keys to validate (Array):', Array.from(keysToValidate));
-    console.log('==========================');
+    console.log('Expected Orbit key:', expectedOrbitKey);
+    console.log('Expected standard pattern:', getBraillePattern(currentLetter));
+    console.log('Keydown events:', actualKeys);
+    console.log('Is Orbit Reader input:', isOrbitReaderInput);
+    console.log('Is standard input:', isStandardInput);
+    console.log('Is correct standard pattern:', isCorrectStandardPattern);
+    console.log('Device used:', deviceUsed);
+    console.log('Validation result:', isCorrect);
+    console.log('======================================');
     
-    const letterEndTime = Date.now();
-    const letterTime = letterEndTime - letterStartTime;
-    
-    if (isCorrectPattern(Array.from(keysToValidate), currentLetter)) {
+    if (isCorrect) {
       // Correct letter typed
       const newTypedWord = typedWord + currentLetter;
       setTypedWord(newTypedWord);
@@ -167,20 +243,50 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
         ...prev,
         [currentWord]: {
           ...prev[currentWord],
-          letterTimes: [...(prev[currentWord]?.letterTimes || []), letterTime]
+          letterTimes: [...(prev[currentWord]?.letterTimes || []), timeTaken]
+        }
+      }));
+
+      // Update device usage stats
+      setDeviceUsageStats(prev => ({
+        ...prev,
+        [currentWord]: {
+          ...prev[currentWord],
+          letterAttempts: [
+            ...(prev[currentWord]?.letterAttempts || []),
+            {
+              letter: currentLetter,
+              letterIndex: currentLetterIndex,
+              device: deviceUsed,
+              correct: true,
+              keys: actualKeys,
+              timestamp: Date.now()
+            }
+          ]
+        }
+      }));
+
+      // Update device counts
+      setDeviceUsageStats(prev => ({
+        ...prev,
+        [currentWord]: {
+          ...prev[currentWord],
+          [deviceUsed]: (prev[currentWord]?.[deviceUsed] || 0) + 1
         }
       }));
       
-      // Clear pressed keys after successful input
+      // Clear pressed keys and keydown events after successful input
       setPressedKeys(new Set());
+      setKeydownEvents(new Set());
       
       if (currentLetterIndex < currentWord.length - 1) {
         // Move to next letter
         setCurrentLetterIndex(currentLetterIndex + 1);
         setLetterStartTime(Date.now());
         const nextLetter = currentWord[currentLetterIndex + 1];
+        const nextLetterPattern = getBraillePattern(nextLetter);
         setFeedback(`Correct! Now type: ${nextLetter.toUpperCase()}`);
-        await voiceInstructor.speak(`Correct! Now type the letter ${nextLetter.toUpperCase()}`);
+        await voiceInstructor.speak(`Correct! Now type the letter ${nextLetter.toUpperCase()}: Press keys ${nextLetterPattern.join(', ')}`);
         
         // Re-enable input for next letter
         setIsWaitingForInput(true);
@@ -190,9 +296,11 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
       }
     } else {
       // Incorrect pattern
+      const expectedPattern = getBraillePattern(currentLetter);
       const errorData = {
         expectedPattern,
-        actualKeys: Array.from(keysToValidate),
+        actualKeys: Array.from(keydownEventsToValidate),
+        device: deviceUsed,
         timestamp: Date.now(),
         letterIndex: currentLetterIndex
       };
@@ -204,13 +312,44 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
           errors: [...(prev[currentWord]?.errors || []), errorData]
         }
       }));
+
+      // Record failed attempt in device usage stats
+      setDeviceUsageStats(prev => ({
+        ...prev,
+        [currentWord]: {
+          ...prev[currentWord],
+          letterAttempts: [
+            ...(prev[currentWord]?.letterAttempts || []),
+            {
+              letter: currentLetter,
+              letterIndex: currentLetterIndex,
+              device: deviceUsed,
+              correct: false,
+              keys: actualKeys,
+              timestamp: Date.now()
+            }
+          ]
+        }
+      }));
       
       setFeedback(`Incorrect. Try again for letter: ${currentLetter.toUpperCase()}`);
-      await voiceInstructor.speak(`Incorrect. The pattern for ${currentLetter.toUpperCase()} is ${expectedKeys.join(', ')}. Try again.`);
       
-      // Clear pressed keys after incorrect input and re-enable input
+      let errorMessage = '';
+      if (deviceUsed === 'orbitReader') {
+        errorMessage = `Incorrect. For letter ${currentLetter.toUpperCase()}, press the key combination for dots ${expectedPattern.join(', ')} on your Orbit Reader.`;
+      } else if (deviceUsed === 'standardKeyboard') {
+        const expectedKeys = dotsToKeys(expectedPattern);
+        errorMessage = `Incorrect. For letter ${currentLetter.toUpperCase()}, press keys ${expectedKeys.join(', ')} on the standard Braille keyboard.`;
+      } else {
+        errorMessage = `Incorrect. For letter ${currentLetter.toUpperCase()}, use either Orbit Reader or standard Braille keyboard with pattern ${expectedPattern.join(', ')}.`;
+      }
+      
+      await voiceInstructor.speak(errorMessage);
+      
+      // Clear pressed keys and keydown events after incorrect input and re-enable input
       setTimeout(() => {
         setPressedKeys(new Set());
+        setKeydownEvents(new Set());
         setIsWaitingForInput(true);
       }, 1000);
     }
@@ -219,14 +358,25 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
   const handleKeyDown = useCallback((event) => {
     if (!isInputActive || isComplete || isStartingWord || !isWaitingForInput) return;
 
-    const key = event.key.toLowerCase();
+    const key = event.key;
     const brailleKeys = ['f', 'd', 's', 'a', 'j', 'k', 'l', ';'];
     
-    if (brailleKeys.includes(key)) {
+    console.log('Key down:', key, 'Standard valid key:', brailleKeys.includes(key), 'Orbit Reader letter:', ORBIT_READER_LETTER_MAPPING[key] !== undefined);
+    
+    // Check if it's a standard Braille key OR an Orbit Reader letter
+    if (brailleKeys.includes(key) || ORBIT_READER_LETTER_MAPPING[key] !== undefined) {
       event.preventDefault();
+      
+      // Track both pressed keys and keydown events
       setPressedKeys(prev => {
         const newSet = new Set([...prev, key]);
         console.log('Updated pressed keys (keydown):', Array.from(newSet));
+        return newSet;
+      });
+      
+      setKeydownEvents(prev => {
+        const newSet = new Set([...prev, key]);
+        console.log('Updated keydown events:', Array.from(newSet));
         return newSet;
       });
     }
@@ -234,27 +384,28 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
   const handleKeyUp = useCallback((event) => {
     if (!isInputActive || isComplete || isStartingWord || !isWaitingForInput) return;
 
-    const key = event.key.toLowerCase();
+    const key = event.key;
     const brailleKeys = ['f', 'd', 's', 'a', 'j', 'k', 'l', ';'];
     
-    if (brailleKeys.includes(key)) {
+    console.log('Key up:', key, 'Standard valid key:', brailleKeys.includes(key), 'Orbit Reader letter:', ORBIT_READER_LETTER_MAPPING[key] !== undefined);
+    
+    // Check if it's a standard Braille key OR Orbit Reader letter OR "Unidentified" (common with screen readers)
+    if (brailleKeys.includes(key) || ORBIT_READER_LETTER_MAPPING[key] !== undefined || key === "Unidentified") {
       event.preventDefault();
       
-      // For word training, validate immediately using current state
-      // Pass the current pressed keys to avoid stale state issues
-      setPressedKeys(currentKeys => {
-        console.log('Current keys in setState callback:', Array.from(currentKeys));
-        
-        // Only validate if we're still waiting for input and have keys
-        if (isWaitingForInput && currentKeys.size > 0) {
-          setIsWaitingForInput(false); // Prevent multiple validations
-          setTimeout(() => {
-            validateWithKeys(currentKeys);
-          }, 200);
-        }
-          return currentKeys; // Don't change the state, just use it for validation
-      });
-    }  }, [isInputActive, isComplete, isStartingWord, isWaitingForInput, validateWithKeys]);
+      // Use current keydown events for validation
+      setTimeout(() => {
+        setKeydownEvents(currentEvents => {
+          console.log('Current keydown events for validation:', Array.from(currentEvents));
+          if (currentEvents.size > 0) {
+            setIsWaitingForInput(false); // Prevent multiple validations
+            validateWithKeydownEvents(currentEvents);
+          }
+          return currentEvents;
+        });
+      }, 100);
+    }
+  }, [isInputActive, isComplete, isStartingWord, isWaitingForInput, validateWithKeydownEvents]);
 
   const completeTraining = () => {
     setIsComplete(true);
@@ -274,6 +425,7 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
       averageTimePerWord,
       wordsCompleted: allWords.length,
       wordStats,
+      deviceUsageStats, // Include device usage statistics
       studentId,
       timestamp: new Date().toISOString()
     };
@@ -372,7 +524,11 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
 
   const renderStats = () => {
     const currentWordStats = wordStats[currentWord];
+    const currentDeviceStats = deviceUsageStats[currentWord];
     if (!currentWordStats) return null;
+    
+    const standardCount = currentDeviceStats?.standardKeyboard || 0;
+    const orbitCount = currentDeviceStats?.orbitReader || 0;
     
     return (
       <div className="bg-white p-4 rounded-lg shadow">
@@ -395,6 +551,14 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
             <span className="ml-2 font-semibold">
               {Math.round(((currentWordStats.letterTimes?.length || 0) / currentWord.length) * 100)}%
             </span>
+          </div>
+          <div>
+            <span className="text-gray-600">📱 Orbit Reader:</span>
+            <span className="ml-2 font-semibold">{orbitCount}</span>
+          </div>
+          <div>
+            <span className="text-gray-600">🖮 Standard KB:</span>
+            <span className="ml-2 font-semibold">{standardCount}</span>
           </div>
         </div>
       </div>
@@ -427,6 +591,20 @@ const BrailleWordTraining = ({ onComplete, studentId }) => {
                 {Math.round(Object.values(wordStats).reduce((sum, word) => sum + (word.timeSpent || 0), 0) / 1000)}s
               </div>
               <div className="text-sm text-gray-600">Total Time</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div className="bg-white p-4 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">
+                📱 {Object.values(deviceUsageStats).reduce((sum, word) => sum + (word.orbitReader || 0), 0)}
+              </div>
+              <div className="text-sm text-gray-600">Orbit Reader Letters</div>
+            </div>
+            <div className="bg-white p-4 rounded-lg">
+              <div className="text-2xl font-bold text-indigo-600">
+                🖮 {Object.values(deviceUsageStats).reduce((sum, word) => sum + (word.standardKeyboard || 0), 0)}
+              </div>
+              <div className="text-sm text-gray-600">Standard Keyboard Letters</div>
             </div>
           </div>
         </div>

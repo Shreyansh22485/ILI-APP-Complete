@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { updatePreTestInfo } from '../../redux/actions';
-import { BRAILLE_ALPHABET, getBraillePattern, isCorrectPattern, BRAILLE_KEYS, BRAILLE_KEY_MAPPING } from '../../utils/brailleMapping';
+import { BRAILLE_ALPHABET, getBraillePattern, isCorrectPattern, BRAILLE_KEYS, BRAILLE_KEY_MAPPING, dotsToKeys } from '../../utils/brailleMapping';
 import { VoiceInstructor } from '../../utils/voiceInstructor';
 import BeatLoader from "react-spinners/BeatLoader";
 
@@ -29,6 +29,7 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
   // Training data
   const letters = Object.keys(BRAILLE_ALPHABET).slice(0, 3); // Start with first 3 letters
   const [letterStats, setLetterStats] = useState({});
+  const [deviceUsageStats, setDeviceUsageStats] = useState({}); // Track which device was used for each letter
   const [startTime, setStartTime] = useState(null);
   const [sessionStartTime] = useState(Date.now());
   
@@ -42,6 +43,7 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
   useEffect(() => {
     // Initialize letter stats
     const stats = {};
+    const deviceStats = {};
     letters.forEach(letter => {
       stats[letter] = {
         attempts: 0,
@@ -49,8 +51,14 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
         timeSpent: 0,
         errorPatterns: []
       };
+      deviceStats[letter] = {
+        standardKeyboard: 0,
+        orbitReader: 0,
+        attempts: []
+      };
     });
     setLetterStats(stats);
+    setDeviceUsageStats(deviceStats);
     
     // Start the training
     startTraining();
@@ -161,18 +169,50 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
     const letter = letters[currentLetterIndex];
     const timeTaken = Date.now() - startTime;
     
-    // For Orbit Reader: Direct letter-to-letter comparison
-    const expectedKey = ORBIT_READER_LETTER_MAPPING[letter];
+    // Determine which device was used and validate accordingly
     const actualKeys = Array.from(keydownEventsToValidate);
-    const isCorrect = actualKeys.length === 1 && actualKeys[0] === expectedKey;
+    let isCorrect = false;
+    let deviceUsed = '';
+    
+    // Check if it's Orbit Reader input (single letter key)
+    const expectedOrbitKey = ORBIT_READER_LETTER_MAPPING[letter];
+    const isOrbitReaderInput = actualKeys.length === 1 && actualKeys[0] === expectedOrbitKey;
+    
+    // Check if it's standard Braille keyboard input (multiple dot keys)
+    const isStandardInput = actualKeys.every(key => BRAILLE_KEYS.includes(key));
+    const expectedPattern = getBraillePattern(letter);
+    const isCorrectStandardPattern = isStandardInput && isCorrectPattern(actualKeys, letter);
+    
+    if (isOrbitReaderInput) {
+      isCorrect = true;
+      deviceUsed = 'orbitReader';
+    } else if (isCorrectStandardPattern) {
+      isCorrect = true;
+      deviceUsed = 'standardKeyboard';
+    } else {
+      isCorrect = false;
+      // Try to determine which device was intended
+      if (actualKeys.length === 1 && ORBIT_READER_LETTER_MAPPING[actualKeys[0]]) {
+        deviceUsed = 'orbitReader';
+      } else if (isStandardInput) {
+        deviceUsed = 'standardKeyboard';
+      } else {
+        deviceUsed = 'unknown';
+      }
+    }
     
     // Debug logging
-    console.log('=== DEBUGGING KEYDOWN VALIDATION ===');
+    console.log('=== DEBUGGING DUAL DEVICE VALIDATION ===');
     console.log('Current letter:', letter);
     console.log('Keydown events:', actualKeys);
-    console.log('Expected key for letter:', expectedKey);
+    console.log('Expected Orbit key:', expectedOrbitKey);
+    console.log('Expected standard pattern:', expectedPattern);
+    console.log('Is Orbit Reader input:', isOrbitReaderInput);
+    console.log('Is standard input:', isStandardInput);
+    console.log('Is correct standard pattern:', isCorrectStandardPattern);
+    console.log('Device used:', deviceUsed);
     console.log('Validation result:', isCorrect);
-    console.log('====================================');
+    console.log('========================================');
     
     // Update stats
     setLetterStats(prev => {
@@ -184,6 +224,27 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
         updated[letter].correctAttempts += 1;
       } else {
         updated[letter].errorPatterns.push([...keydownEventsToValidate]);
+      }
+      
+      return updated;
+    });
+
+    // Update device usage stats
+    setDeviceUsageStats(prev => {
+      const updated = { ...prev };
+      updated[letter].attempts.push({
+        device: deviceUsed,
+        correct: isCorrect,
+        keys: actualKeys,
+        timestamp: Date.now()
+      });
+      
+      if (isCorrect) {
+        if (deviceUsed === 'standardKeyboard') {
+          updated[letter].standardKeyboard += 1;
+        } else if (deviceUsed === 'orbitReader') {
+          updated[letter].orbitReader += 1;
+        }
       }
       
       return updated;
@@ -227,7 +288,18 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
     } else {
       // Incorrect input
       const correctPattern = getBraillePattern(letter);
-      await voiceInstructor.current.speakError(letter, correctPattern);
+      let errorMessage = '';
+      
+      if (deviceUsed === 'orbitReader') {
+        errorMessage = `Incorrect. For letter ${letter.toUpperCase()}, press the key combination for dots ${correctPattern.join(', ')} on your Orbit Reader.`;
+      } else if (deviceUsed === 'standardKeyboard') {
+        const expectedKeys = dotsToKeys(correctPattern);
+        errorMessage = `Incorrect. For letter ${letter.toUpperCase()}, press keys ${expectedKeys.join(', ')} on the standard Braille keyboard.`;
+      } else {
+        errorMessage = `Incorrect. For letter ${letter.toUpperCase()}, use either Orbit Reader or standard Braille keyboard with pattern ${correctPattern.join(', ')}.`;
+      }
+      
+      await voiceInstructor.current.speak(errorMessage);
       
       // Reset for retry
       setTimeout(() => {
@@ -267,6 +339,7 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
       accuracy,
       avgTimePerLetter,
       letterStats,
+      deviceUsageStats, // Include device usage statistics
       studentId: 'current_student', // You might want to get this from props
       timestamp: new Date().toISOString()
     };
@@ -406,16 +479,26 @@ const BrailleLetterTraining = ({ onComplete, title }) => {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
               {letters.slice(0, currentLetterIndex + 1).map(letter => {
                 const stats = letterStats[letter];
+                const deviceStats = deviceUsageStats[letter];
                 const accuracy = stats ? (stats.correctAttempts / Math.max(stats.attempts, 1)) * 100 : 0;
+                const standardCount = deviceStats?.standardKeyboard || 0;
+                const orbitCount = deviceStats?.orbitReader || 0;
+                
                 return (
                   <div key={letter} className="text-center p-2 bg-white rounded">
                     <div className="font-bold text-lg">{letter.toUpperCase()}</div>
                     <div className="text-xs text-gray-600">
                       {accuracy.toFixed(0)}% ({stats?.attempts || 0})
                     </div>
+                    <div className="text-xs text-blue-600 mt-1">
+                      📱{orbitCount} 🖮{standardCount}
+                    </div>
                   </div>
                 );
               })}
+            </div>
+            <div className="text-xs text-gray-500 mt-2 text-center">
+              📱 = Orbit Reader, 🖮 = Standard Keyboard
             </div>
           </div>
         </div>
