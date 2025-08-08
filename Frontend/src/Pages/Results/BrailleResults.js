@@ -23,8 +23,6 @@ export default function BrailleResults() {
   const [realWordStats, setRealWordStats] = useState(null);
   const [realLetterStatsArray, setRealLetterStatsArray] = useState(null);
   const [realWordStatsArray, setRealWordStatsArray] = useState(null);
-  const [deviceComparisonChart, setDeviceComparisonChart] = useState(null);
-  const [letterDeviceChart, setLetterDeviceChart] = useState(null);
 
   // Check if we're viewing a specific student from admin panel
   const urlParams = new URLSearchParams(location.search);
@@ -43,7 +41,6 @@ export default function BrailleResults() {
       
       if (brailleTraining.letterTraining.completed && brailleTraining.letterTraining.letterStats) {
         createLetterAccuracyChart();
-        createDeviceComparisonCharts();
       }
       if (brailleTraining.wordTraining.completed && brailleTraining.wordTraining.wordStats) {
         createWordPerformanceChart();
@@ -53,8 +50,6 @@ export default function BrailleResults() {
     return () => {
       if (letterChart) letterChart.destroy();
       if (wordChart) wordChart.destroy();
-      if (deviceComparisonChart) deviceComparisonChart.destroy();
-      if (letterDeviceChart) letterDeviceChart.destroy();
     };
   }, [brailleTraining, selectedStudent]);
 
@@ -363,167 +358,6 @@ export default function BrailleResults() {
     });
 
     setWordChart(newChart);
-  };
-
-  // Device Comparison Charts
-  const createDeviceComparisonCharts = () => {
-    createOverallDeviceComparisonChart();
-    createLetterDeviceUsageChart();
-  };
-
-  const createOverallDeviceComparisonChart = () => {
-    const ctx = document.getElementById('deviceComparisonChart');
-    if (!ctx) return;
-
-    if (deviceComparisonChart) deviceComparisonChart.destroy();
-
-    // Get device usage data from training
-    const letterDeviceStats = brailleTraining.letterTraining.deviceUsageStats || {};
-    const wordDeviceStats = brailleTraining.wordTraining.deviceUsageStats || {};
-
-    // Calculate totals for letters
-    let letterStandardTotal = 0;
-    let letterOrbitTotal = 0;
-    Object.values(letterDeviceStats).forEach(stats => {
-      letterStandardTotal += stats.standardKeyboard || 0;
-      letterOrbitTotal += stats.orbitReader || 0;
-    });
-
-    // Calculate totals for words
-    let wordStandardTotal = 0;
-    let wordOrbitTotal = 0;
-    Object.values(wordDeviceStats).forEach(stats => {
-      wordStandardTotal += stats.standardKeyboard || 0;
-      wordOrbitTotal += stats.orbitReader || 0;
-    });
-
-    const newChart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Standard Keyboard', 'Orbit Reader'],
-        datasets: [
-          {
-            label: 'Letters',
-            data: [letterStandardTotal, letterOrbitTotal],
-            backgroundColor: ['#3B82F6', '#10B981'],
-            borderColor: ['#1E40AF', '#059669'],
-            borderWidth: 2
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          title: {
-            display: true,
-            text: 'Device Usage Distribution'
-          },
-          legend: {
-            position: 'bottom'
-          }
-        }
-      }
-    });
-
-    setDeviceComparisonChart(newChart);
-  };
-
-  const createLetterDeviceUsageChart = () => {
-    const ctx = document.getElementById('letterDeviceChart');
-    if (!ctx) return;
-
-    if (letterDeviceChart) letterDeviceChart.destroy();
-
-    const deviceStats = brailleTraining.letterTraining.deviceUsageStats || {};
-    const letters = Object.keys(deviceStats).sort();
-    
-    const standardData = letters.map(letter => deviceStats[letter]?.standardKeyboard || 0);
-    const orbitData = letters.map(letter => deviceStats[letter]?.orbitReader || 0);
-
-    const newChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: letters.map(l => l.toUpperCase()),
-        datasets: [
-          {
-            label: 'Standard Keyboard',
-            data: standardData,
-            backgroundColor: '#3B82F6',
-            borderColor: '#1E40AF',
-            borderWidth: 1
-          },
-          {
-            label: 'Orbit Reader',
-            data: orbitData,
-            backgroundColor: '#10B981',
-            borderColor: '#059669',
-            borderWidth: 1
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          title: {
-            display: true,
-            text: 'Device Usage by Letter'
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            title: {
-              display: true,
-              text: 'Successful Attempts'
-            }
-          },
-          x: {
-            title: {
-              display: true,
-              text: 'Letters'
-            }
-          }
-        }
-      }
-    });
-
-    setLetterDeviceChart(newChart);
-  };
-
-  const getDeviceUsageStats = () => {
-    const letterDeviceStats = brailleTraining.letterTraining.deviceUsageStats || {};
-    const wordDeviceStats = brailleTraining.wordTraining.deviceUsageStats || {};
-
-    // Calculate letter totals
-    let letterStandardTotal = 0;
-    let letterOrbitTotal = 0;
-    Object.values(letterDeviceStats).forEach(stats => {
-      letterStandardTotal += stats.standardKeyboard || 0;
-      letterOrbitTotal += stats.orbitReader || 0;
-    });
-
-    // Calculate word totals
-    let wordStandardTotal = 0;
-    let wordOrbitTotal = 0;
-    Object.values(wordDeviceStats).forEach(stats => {
-      wordStandardTotal += stats.standardKeyboard || 0;
-      wordOrbitTotal += stats.orbitReader || 0;
-    });
-
-    const totalStandard = letterStandardTotal + wordStandardTotal;
-    const totalOrbit = letterOrbitTotal + wordOrbitTotal;
-    const grandTotal = totalStandard + totalOrbit;
-
-    return {
-      letterStandard: letterStandardTotal,
-      letterOrbit: letterOrbitTotal,
-      wordStandard: wordStandardTotal,
-      wordOrbit: wordOrbitTotal,
-      totalStandard,
-      totalOrbit,
-      standardPercentage: grandTotal > 0 ? ((totalStandard / grandTotal) * 100).toFixed(1) : 0,
-      orbitPercentage: grandTotal > 0 ? ((totalOrbit / grandTotal) * 100).toFixed(1) : 0
-    };
   };
 
   const createWordPerformanceChartAdmin = (wordTraining) => {
@@ -934,52 +768,6 @@ export default function BrailleResults() {
                     </div>
                   )}
                 </div>
-
-                {/* Device Usage Comparison Charts */}
-                {!isAdminView && currentTrainingData.letterTraining.deviceUsageStats && 
-                 Object.keys(currentTrainingData.letterTraining.deviceUsageStats).length > 0 && (
-                  <div className="mb-8">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Device Usage Analysis</h2>
-                    
-                    {(() => {
-                      const deviceStats = getDeviceUsageStats();
-                      return (
-                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                          <h3 className="text-xl font-semibold text-gray-700 mb-4">Device Usage Summary</h3>
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                            <div className="text-center p-4 bg-blue-50 rounded-lg">
-                              <p className="text-sm text-gray-600">Standard Keyboard</p>
-                              <p className="text-2xl font-bold text-blue-600">{deviceStats.totalStandard}</p>
-                              <p className="text-sm text-blue-500">{deviceStats.standardPercentage}% of total</p>
-                            </div>
-                            <div className="text-center p-4 bg-green-50 rounded-lg">
-                              <p className="text-sm text-gray-600">Orbit Reader</p>
-                              <p className="text-2xl font-bold text-green-600">{deviceStats.totalOrbit}</p>
-                              <p className="text-sm text-green-500">{deviceStats.orbitPercentage}% of total</p>
-                            </div>
-                            <div className="text-center p-4 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-600">Letters (Std/Orbit)</p>
-                              <p className="text-2xl font-bold text-gray-700">{deviceStats.letterStandard}/{deviceStats.letterOrbit}</p>
-                            </div>
-                            <div className="text-center p-4 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-600">Words (Std/Orbit)</p>
-                              <p className="text-2xl font-bold text-gray-700">{deviceStats.wordStandard}/{deviceStats.wordOrbit}</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      <div className="bg-white rounded-lg shadow-lg p-6">
-                        <canvas id="deviceComparisonChart" width="400" height="300"></canvas>
-                      </div>
-                      <div className="bg-white rounded-lg shadow-lg p-6">
-                        <canvas id="letterDeviceChart" width="400" height="300"></canvas>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Difficulty Analysis */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
